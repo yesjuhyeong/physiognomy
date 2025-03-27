@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>관상 분석 시스템</title>
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <style>
+    body {
+      background-color: #f8f9fa;
+      padding: 20px;
+      font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    }
+    .main-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .card {
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      border-radius: 15px;
+      overflow: hidden;
+    }
+    #webcam-container {
+      position: relative;
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    #webcam {
+      width: 100%;
+      border-radius: 8px;
+      display: block;
+    }
+    .btn-container {
+      margin: 20px 0;
+      text-align: center;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      margin: 20px 0;
+    }
+    .loading-spinner {
+      width: 3rem;
+      height: 3rem;
+    }
+    #result-container {
+      display: none;
+      margin-top: 20px;
+    }
+    .result-card {
+      background-color: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+    /* 스캐닝 효과 */
+    .scan-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      border: 3px solid rgba(0, 198, 255, 0.5);
+      border-radius: 12px;
+      box-sizing: border-box;
+      z-index: 10;
+    }
+    .scan-grid {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: linear-gradient(rgba(0, 198, 255, 0.2) 1px, transparent 1px),
+                       linear-gradient(90deg, rgba(0, 198, 255, 0.2) 1px, transparent 1px);
+      background-size: 20px 20px;
+      z-index: 9;
+      opacity: 0.5;
+    }
+    .scan-line {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background-color: rgba(0, 198, 255, 0.7);
+      box-shadow: 0 0 10px 3px rgba(0, 198, 255, 0.5);
+      border-radius: 2px;
+      z-index: 11;
+      animation: scan 2s cubic-bezier(0.36, 0.07, 0.19, 0.97) infinite;
+    }
+    .scan-corner {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      z-index: 12;
+      border-color: rgb(0, 198, 255);
+      border-style: solid;
+      border-width: 0;
+    }
+    .top-left {
+      top: 0;
+      left: 0;
+      border-top-width: 3px;
+      border-left-width: 3px;
+      border-top-left-radius: 8px;
+    }
+    .top-right {
+      top: 0;
+      right: 0;
+      border-top-width: 3px;
+      border-right-width: 3px;
+      border-top-right-radius: 8px;
+    }
+    .bottom-left {
+      bottom: 0;
+      left: 0;
+      border-bottom-width: 3px;
+      border-left-width: 3px;
+      border-bottom-left-radius: 8px;
+    }
+    .bottom-right {
+      bottom: 0;
+      right: 0;
+      border-bottom-width: 3px;
+      border-right-width: 3px;
+      border-bottom-right-radius: 8px;
+    }
+    @keyframes scan {
+      0%, 100% { top: 5%; opacity: 1; }
+      50% { top: 90%; opacity: 0.8; }
+    }
+    #analyzed-image {
+      max-width: 100%;
+      border-radius: 8px;
+      margin-top: 15px;
+      margin-bottom: 15px;
+      display: block;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .analysis-step {
+      display: none;
+      text-align: center;
+      margin: 20px 0;
+      font-size: 18px;
+      font-weight: bold;
+      color: #0099cc;
+    }
+    .step-highlight {
+      color: #ff6b6b;
+    }
+    .process-headline {
+      font-size: 16px;
+      color: #555;
+      margin: 5px 0;
+    }
+    .tech-details {
+      font-size: 14px;
+      color: #777;
+      margin-top: 10px;
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 5px;
+      border-left: 3px solid #0099cc;
+    }
+    .scan-text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 18px;
+      font-weight: bold;
+      text-shadow: 0 0 5px rgba(0, 0, 0, 0.5);
+      z-index: 13;
+      opacity: 0;
+      animation: textPulse 2s ease-in-out infinite;
+    }
+    @keyframes textPulse {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="main-container">
+    <h1 class="text-center mb-4">관상 분석 시스템</h1>
+    
+    <div class="card">
+      <div class="card-body">
+        <!-- 웹캠 & 스캐닝 UI -->
+        <div id="webcam-container">
+          <video id="webcam" autoplay playsinline></video>
+          <div class="scan-overlay">
+            <!-- 모서리/스캔라인 등 각종 시각효과 -->
+          </div>
+          <div class="scan-text" id="scan-text">얼굴 스캔 중...</div>
+        </div>
+
+        <!-- 스텝별 안내문 -->
+        <div id="analysis-steps">
+          <div id="step1" class="analysis-step">얼굴 감지 중...</div>
+          <div id="step2" class="analysis-step">랜드마크 추출 중...</div>
+          <div id="step3" class="analysis-step">세부 부위 분석 중...</div>
+          <div id="step4" class="analysis-step">결과 도출 중...</div>
+        </div>
+        
+        <!-- 버튼 -->
+        <div class="btn-container">
+          <button id="capture-btn" class="btn btn-primary me-2">사진 촬영</button>
+          <input type="file" id="file-input" accept="image/*" style="display:none;" />
+          <button id="upload-btn" class="btn btn-secondary">이미지 업로드</button>
+        </div>
+
+        <!-- 로딩중 표시 -->
+        <div class="loading">
+          <div class="spinner-border loading-spinner text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-2">분석 중...</p>
+        </div>
+
+        <!-- 결과 영역 -->
+        <div id="result-container">
+          <div class="result-card">
+            <h3 class="text-center mb-3">분석 결과</h3>
+
+            <!-- 분석된 이미지 -->
+            <img id="analyzed-image" src="" alt="분석된 얼굴" />
+
+            <!-- 간단 프로세스 안내 -->
+            <h4>분석 과정</h4>
+            <p class="process-headline">1. 얼굴 인식 & 랜드마크 검출</p>
+            <p class="process-headline">2. 세부 부위 분석 (눈썹, 눈, 코, 입, 턱)</p>
+            <p class="process-headline">3. 결과 시각화 및 해석 표시</p>
+
+            <!-- NEW: 상세 결과 -->
+            <div class="mt-4">
+              <h4>Detailed Analysis</h4>
+              <ul>
+                <li><strong>Eyebrows:</strong> <span id="res-eyebrows"></span></li>
+                <li><strong>Eyes:</strong> <span id="res-eyes"></span></li>
+                <li><strong>Nose:</strong> <span id="res-nose"></span></li>
+                <li><strong>Mouth:</strong> <span id="res-mouth"></span></li>
+                <li><strong>Jaw:</strong> <span id="res-jaw"></span></li>
+              </ul>
+            </div>
+
+            <div class="tech-details">
+              <p id="analysis-details"></p>
+            </div>
+
+            <div class="text-center mt-4">
+              <button id="reset-btn" class="btn btn-secondary">다시 분석하기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 자바스크립트 -->
+  <script>
+    let webcam;
+    let canvas;
+    let scanning = false;
+
+    async function setupWebcam() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        webcam = document.getElementById('webcam');
+        webcam.srcObject = stream;
+      } catch (err) {
+        console.error('웹캠 사용 불가:', err);
+        alert('웹캠을 사용할 수 없습니다.');
+      }
+    }
+
+    function showLoading() {
+      document.querySelector('.loading').style.display = 'block';
+      document.getElementById('result-container').style.display = 'none';
+      scanning = true;
+      startScanningEffect();
+    }
+
+    function hideLoading() {
+      document.querySelector('.loading').style.display = 'none';
+      scanning = false;
+    }
+
+    function showResults(data) {
+      // 결과 DIV 표시
+      document.getElementById('result-container').style.display = 'block';
+
+      // 1) 분석된 이미지
+      if (data.vis_image) {
+        document.getElementById('analyzed-image').src = data.vis_image;
+      } else {
+        document.getElementById('analyzed-image').src = '';
+      }
+
+      // 2) 세부 결과 텍스트
+      document.getElementById('res-eyebrows').textContent = data.eyebrows || '';
+      document.getElementById('res-eyes').textContent = data.eyes || '';
+      document.getElementById('res-nose').textContent = data.nose || '';
+      document.getElementById('res-mouth').textContent = data.mouth || '';
+      document.getElementById('res-jaw').textContent = data.jaw || '';
+
+      // 3) 기술 정보
+      document.getElementById('analysis-details').textContent =
+        "분석 완료. shape_predictor_68_face_landmarks.dat 기반.";
+    }
+
+    function startScanningEffect() {
+      // 스텝 문구 순차 노출
+      document.querySelectorAll('.analysis-step').forEach(step => {
+        step.style.display = 'none';
+      });
+      if (scanning) {
+        setTimeout(() => {
+          if (scanning) {
+            document.getElementById('step1').style.display = 'block';
+          }
+        }, 300);
+        setTimeout(() => {
+          if (scanning) {
+            document.getElementById('step1').innerHTML = '얼굴 감지 완료 <span class="step-highlight">✓</span>';
+            document.getElementById('step2').style.display = 'block';
+          }
+        }, 1200);
+        setTimeout(() => {
+          if (scanning) {
+            document.getElementById('step2').innerHTML = '랜드마크 추출 완료 <span class="step-highlight">✓</span>';
+            document.getElementById('step3').style.display = 'block';
+          }
+        }, 2100);
+        setTimeout(() => {
+          if (scanning) {
+            document.getElementById('step3').innerHTML = '세부 부위 분석 완료 <span class="step-highlight">✓</span>';
+            document.getElementById('step4').style.display = 'block';
+          }
+        }, 3000);
+        setTimeout(() => {
+          if (scanning) {
+            document.getElementById('step4').innerHTML = '결과 도출 완료 <span class="step-highlight">✓</span>';
+          }
+        }, 4000);
+      }
+    }
+
+    function resetAnalysis() {
+      document.getElementById('result-container').style.display = 'none';
+      document.querySelectorAll('.analysis-step').forEach(step => {
+        step.style.display = 'none';
+        // " ... <span class="step-highlight">✓</span>" 부분 제거
+        step.innerHTML = step.innerHTML.split(' <span')[0];
+      });
+      scanning = false;
+    }
+
+    async function processImage(imageBlob) {
+      showLoading();
+      const formData = new FormData();
+      formData.append('image', imageBlob);
+
+      try {
+        const response = await fetch('/analyze', {
+          method: 'POST',
+          body: formData,
+        });
+        const result = await response.json();
+        hideLoading();
+
+        if (result.error) {
+          alert(result.error);
+          resetAnalysis();
+          return;
+        }
+        showResults(result);
+
+      } catch (error) {
+        hideLoading();
+        console.error('분석 오류:', error);
+        alert('이미지 분석 중 오류 발생');
+        resetAnalysis();
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      setupWebcam();
+      canvas = document.createElement('canvas');
+
+      // 사진촬영 버튼
+      document.getElementById('capture-btn').addEventListener('click', () => {
+        const video = document.getElementById('webcam');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        canvas.toBlob(processImage, 'image/jpeg');
+      });
+
+      // 업로드 버튼
+      const fileInput = document.getElementById('file-input');
+      document.getElementById('upload-btn').addEventListener('click', () => {
+        fileInput.click();
+      });
+      fileInput.addEventListener('change', (ev) => {
+        const file = ev.target.files[0];
+        if (file) {
+          processImage(file);
+        }
+      });
+
+      // "다시 분석" 버튼
+      document.getElementById('reset-btn').addEventListener('click', () => {
+        resetAnalysis();
+      });
+    });
+  </script>
+</body>
+</html>
