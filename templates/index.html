@@ -73,18 +73,6 @@
       box-sizing: border-box;
       z-index: 10;
     }
-    .scan-grid {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-image: linear-gradient(rgba(0, 198, 255, 0.2) 1px, transparent 1px),
-                       linear-gradient(90deg, rgba(0, 198, 255, 0.2) 1px, transparent 1px);
-      background-size: 20px 20px;
-      z-index: 9;
-      opacity: 0.5;
-    }
     .scan-line {
       position: absolute;
       left: 0;
@@ -188,31 +176,58 @@
       0%, 100% { opacity: 0; }
       50% { opacity: 1; }
     }
+    #face-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 15;
+    }
+    /* 실루엣 가이드 */
+    #silhouette-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 80%;
+      opacity: 0.5;
+      pointer-events: none;
+      z-index: 11;
+    }
   </style>
 </head>
 <body>
   <div class="main-container">
     <h1 class="text-center mb-4">관상 분석 시스템</h1>
-    
     <div class="card">
       <div class="card-body">
-        <!-- 웹캠 & 스캐닝 UI -->
+        <!-- 웹캠 & 가이드 & 스캐닝 -->
         <div id="webcam-container">
           <video id="webcam" autoplay playsinline></video>
-          <div class="scan-overlay">
-            <!-- 모서리/스캔라인 등 각종 시각효과 -->
-          </div>
+          <!-- 사람 실루엣 가이드 -->
+          <img id="silhouette-overlay" src="/static/silhouette.png" alt="촬영 가이드 실루엣" />
+          <!-- 스캔 UI -->
+          <div class="scan-overlay"></div>
+          <div class="scan-line"></div>
+          <div class="scan-corner top-left"></div>
+          <div class="scan-corner top-right"></div>
+          <div class="scan-corner bottom-left"></div>
+          <div class="scan-corner bottom-right"></div>
           <div class="scan-text" id="scan-text">얼굴 스캔 중...</div>
+          <!-- 얼굴 박스 캔버스 (선택) -->
+          <canvas id="face-overlay"></canvas>
         </div>
 
-        <!-- 스텝별 안내문 -->
+        <!-- 스텝별 안내 -->
         <div id="analysis-steps">
           <div id="step1" class="analysis-step">얼굴 감지 중...</div>
           <div id="step2" class="analysis-step">랜드마크 추출 중...</div>
           <div id="step3" class="analysis-step">세부 부위 분석 중...</div>
           <div id="step4" class="analysis-step">결과 도출 중...</div>
         </div>
-        
+
         <!-- 버튼 -->
         <div class="btn-container">
           <button id="capture-btn" class="btn btn-primary me-2">사진 촬영</button>
@@ -220,7 +235,7 @@
           <button id="upload-btn" class="btn btn-secondary">이미지 업로드</button>
         </div>
 
-        <!-- 로딩중 표시 -->
+        <!-- 로딩 -->
         <div class="loading">
           <div class="spinner-border loading-spinner text-primary" role="status">
             <span class="visually-hidden">Loading...</span>
@@ -228,21 +243,15 @@
           <p class="mt-2">분석 중...</p>
         </div>
 
-        <!-- 결과 영역 -->
+        <!-- 결과 -->
         <div id="result-container">
           <div class="result-card">
             <h3 class="text-center mb-3">분석 결과</h3>
-
-            <!-- 분석된 이미지 -->
             <img id="analyzed-image" src="" alt="분석된 얼굴" />
-
-            <!-- 간단 프로세스 안내 -->
             <h4>분석 과정</h4>
             <p class="process-headline">1. 얼굴 인식 & 랜드마크 검출</p>
             <p class="process-headline">2. 세부 부위 분석 (눈썹, 눈, 코, 입, 턱)</p>
             <p class="process-headline">3. 결과 시각화 및 해석 표시</p>
-
-            <!-- NEW: 상세 결과 -->
             <div class="mt-4">
               <h4>Detailed Analysis</h4>
               <ul>
@@ -253,11 +262,9 @@
                 <li><strong>Jaw:</strong> <span id="res-jaw"></span></li>
               </ul>
             </div>
-
             <div class="tech-details">
               <p id="analysis-details"></p>
             </div>
-
             <div class="text-center mt-4">
               <button id="reset-btn" class="btn btn-secondary">다시 분석하기</button>
             </div>
@@ -268,9 +275,9 @@
   </div>
 
   <!-- 자바스크립트 -->
+  <script src="https://unpkg.com/face-api.js"></script>
   <script>
-    let webcam;
-    let canvas;
+    let webcam, faceCanvas, faceCtx, canvas;
     let scanning = false;
 
     async function setupWebcam() {
@@ -278,9 +285,20 @@
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
         webcam = document.getElementById('webcam');
         webcam.srcObject = stream;
+        await webcam.play();
+
+        // 얼굴 박스 캔버스 세팅
+        faceCanvas = document.getElementById('face-overlay');
+        faceCanvas.width  = webcam.videoWidth;
+        faceCanvas.height = webcam.videoHeight;
+        faceCtx = faceCanvas.getContext('2d');
+
+        // face-api 모델 로드
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+        detectFaceLoop();
       } catch (err) {
-        console.error('웹캠 사용 불가:', err);
-        alert('웹캠을 사용할 수 없습니다.');
+        console.error('웹캠 또는 face-api 에러:', err);
+        alert('웹캠/얼굴 감지가 불가능합니다.');
       }
     }
 
@@ -297,132 +315,94 @@
     }
 
     function showResults(data) {
-      // 결과 DIV 표시
       document.getElementById('result-container').style.display = 'block';
-
-      // 1) 분석된 이미지
-      if (data.vis_image) {
-        document.getElementById('analyzed-image').src = data.vis_image;
-      } else {
-        document.getElementById('analyzed-image').src = '';
-      }
-
-      // 2) 세부 결과 텍스트
+      document.getElementById('analyzed-image').src = data.vis_image || '';
       document.getElementById('res-eyebrows').textContent = data.eyebrows || '';
-      document.getElementById('res-eyes').textContent = data.eyes || '';
-      document.getElementById('res-nose').textContent = data.nose || '';
-      document.getElementById('res-mouth').textContent = data.mouth || '';
-      document.getElementById('res-jaw').textContent = data.jaw || '';
-
-      // 3) 기술 정보
+      document.getElementById('res-eyes').textContent     = data.eyes     || '';
+      document.getElementById('res-nose').textContent     = data.nose     || '';
+      document.getElementById('res-mouth').textContent    = data.mouth    || '';
+      document.getElementById('res-jaw').textContent      = data.jaw      || '';
       document.getElementById('analysis-details').textContent =
         "분석 완료. shape_predictor_68_face_landmarks.dat 기반.";
     }
 
     function startScanningEffect() {
-      // 스텝 문구 순차 노출
-      document.querySelectorAll('.analysis-step').forEach(step => {
-        step.style.display = 'none';
-      });
-      if (scanning) {
-        setTimeout(() => {
-          if (scanning) {
-            document.getElementById('step1').style.display = 'block';
-          }
-        }, 300);
-        setTimeout(() => {
-          if (scanning) {
-            document.getElementById('step1').innerHTML = '얼굴 감지 완료 <span class="step-highlight">✓</span>';
-            document.getElementById('step2').style.display = 'block';
-          }
-        }, 1200);
-        setTimeout(() => {
-          if (scanning) {
-            document.getElementById('step2').innerHTML = '랜드마크 추출 완료 <span class="step-highlight">✓</span>';
-            document.getElementById('step3').style.display = 'block';
-          }
-        }, 2100);
-        setTimeout(() => {
-          if (scanning) {
-            document.getElementById('step3').innerHTML = '세부 부위 분석 완료 <span class="step-highlight">✓</span>';
-            document.getElementById('step4').style.display = 'block';
-          }
-        }, 3000);
-        setTimeout(() => {
-          if (scanning) {
-            document.getElementById('step4').innerHTML = '결과 도출 완료 <span class="step-highlight">✓</span>';
-          }
-        }, 4000);
-      }
+      document.querySelectorAll('.analysis-step').forEach(s => s.style.display='none');
+      if (!scanning) return;
+      setTimeout(()=>{ document.getElementById('step1').style.display='block'; }, 300);
+      setTimeout(()=>{
+        document.getElementById('step1').innerHTML='얼굴 감지 완료 <span class="step-highlight">✓</span>';
+        document.getElementById('step2').style.display='block';
+      },1200);
+      setTimeout(()=>{
+        document.getElementById('step2').innerHTML='랜드마크 추출 완료 <span class="step-highlight">✓</span>';
+        document.getElementById('step3').style.display='block';
+      },2100);
+      setTimeout(()=>{
+        document.getElementById('step3').innerHTML='세부 부위 분석 완료 <span class="step-highlight">✓</span>';
+        document.getElementById('step4').style.display='block';
+      },3000);
+      setTimeout(()=>{
+        document.getElementById('step4').innerHTML='결과 도출 완료 <span class="step-highlight">✓</span>';
+      },4000);
     }
 
     function resetAnalysis() {
-      document.getElementById('result-container').style.display = 'none';
-      document.querySelectorAll('.analysis-step').forEach(step => {
-        step.style.display = 'none';
-        // " ... <span class="step-highlight">✓</span>" 부분 제거
-        step.innerHTML = step.innerHTML.split(' <span')[0];
+      document.getElementById('result-container').style.display='none';
+      document.querySelectorAll('.analysis-step').forEach(step=>{
+        step.style.display='none';
+        step.innerHTML=step.id.replace(/step\d/,'') + ' 분석 중...';
       });
-      scanning = false;
+      scanning=false;
     }
 
-    async function processImage(imageBlob) {
+    async function processImage(blob) {
       showLoading();
-      const formData = new FormData();
-      formData.append('image', imageBlob);
-
+      const form = new FormData();
+      form.append('image', blob);
       try {
-        const response = await fetch('/analyze', {
-          method: 'POST',
-          body: formData,
-        });
-        const result = await response.json();
+        const res = await fetch('/analyze',{method:'POST',body:form});
+        const data = await res.json();
         hideLoading();
-
-        if (result.error) {
-          alert(result.error);
-          resetAnalysis();
-          return;
-        }
-        showResults(result);
-
-      } catch (error) {
+        if (data.error) { alert(data.error); resetAnalysis(); return; }
+        showResults(data);
+      } catch(e) {
         hideLoading();
-        console.error('분석 오류:', error);
+        console.error(e);
         alert('이미지 분석 중 오류 발생');
         resetAnalysis();
       }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
+    async function detectFaceLoop() {
+      const opts = new faceapi.TinyFaceDetectorOptions({ inputSize:224 });
+      const r = await faceapi.detectSingleFace(webcam,opts);
+      faceCtx.clearRect(0,0,faceCanvas.width,faceCanvas.height);
+      if (r) {
+        const { x,y,width,height } = r.box;
+        faceCtx.lineWidth=2;
+        faceCtx.strokeStyle='rgba(0,198,255,0.8)';
+        faceCtx.beginPath();
+        faceCtx.rect(x,y,width,height);
+        faceCtx.stroke();
+      }
+      requestAnimationFrame(detectFaceLoop);
+    }
+
+    document.addEventListener('DOMContentLoaded',()=>{
       setupWebcam();
       canvas = document.createElement('canvas');
-
-      // 사진촬영 버튼
-      document.getElementById('capture-btn').addEventListener('click', () => {
-        const video = document.getElementById('webcam');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        canvas.toBlob(processImage, 'image/jpeg');
-      });
-
-      // 업로드 버튼
-      const fileInput = document.getElementById('file-input');
-      document.getElementById('upload-btn').addEventListener('click', () => {
-        fileInput.click();
-      });
-      fileInput.addEventListener('change', (ev) => {
-        const file = ev.target.files[0];
-        if (file) {
-          processImage(file);
-        }
-      });
-
-      // "다시 분석" 버튼
-      document.getElementById('reset-btn').addEventListener('click', () => {
-        resetAnalysis();
-      });
+      document.getElementById('capture-btn').onclick = ()=>{
+        const v = webcam;
+        canvas.width = v.videoWidth;
+        canvas.height= v.videoHeight;
+        canvas.getContext('2d').drawImage(v,0,0);
+        canvas.toBlob(processImage,'image/jpeg');
+      };
+      const fi = document.getElementById('file-input');
+      document.getElementById('upload-btn').onclick = ()=> fi.click();
+      fi.onchange = e=> e.target.files[0] && processImage(e.target.files[0]);
+      document.getElementById('reset-btn').onclick = resetAnalysis;
     });
   </script>
 </body>
